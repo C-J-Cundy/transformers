@@ -86,9 +86,7 @@ def load_tf_weights_in_gpt_neo(model, config, gpt_neo_checkpoint_path):
             name = name.replace("attn/o", "attn/attention/out_proj/w")
             name = name.replace("norm_1", "ln_1")
             name = name.replace("norm_2", "ln_2")
-            name = name.replace(
-                "attn/compute_output_bias/o_b", "attn/attention/out_proj/b"
-            )
+            name = name.replace("attn/compute_output_bias/o_b", "attn/attention/out_proj/b")
             name = name.replace("conv1d_main/c_fc/kernel", "c_fc/w")
             name = name.replace("conv1d_main/c_fc/bias", "c_fc/b")
             name = name.replace("conv1d_main/c_proj/kernel", "c_proj/w")
@@ -157,11 +155,7 @@ def fixed_pos_embedding(x, seq_dim=1, seq_len=None):
     if seq_len is None:
         seq_len = x.shape[seq_dim]
     inv_freq = 1.0 / (10000 ** (torch.arange(0, dim, 2) / dim))
-    sinusoid_inp = (
-        torch.einsum("i , j -> i j", torch.arange(seq_len), inv_freq)
-        .to(x.device)
-        .float()
-    )
+    sinusoid_inp = torch.einsum("i , j -> i j", torch.arange(seq_len), inv_freq).to(x.device).float()
     return torch.sin(sinusoid_inp), torch.cos(sinusoid_inp)
 
 
@@ -173,12 +167,7 @@ def rotate_every_two(x):
 
 
 def apply_rotary_pos_emb(x, sincos, offset=0):
-    sin, cos = map(
-        lambda t: repeat(
-            t[offset : x.shape[1] + offset, :], "n d -> () n () (d j)", j=2
-        ),
-        sincos,
-    )
+    sin, cos = map(lambda t: repeat(t[offset : x.shape[1] + offset, :], "n d -> () n () (d j)", j=2), sincos,)
     return (x * cos) + (rotate_every_two(x) * sin)
 
 
@@ -196,17 +185,11 @@ class GPTNeoAttentionMixin:
         if rotary:
             return tensor
         if len(tensor.shape) == 5:
-            return tensor.permute(
-                0, 1, 3, 2, 4
-            )  # (batch, blocks, head, block_length, head_features)
+            return tensor.permute(0, 1, 3, 2, 4)  # (batch, blocks, head, block_length, head_features)
         elif len(tensor.shape) == 4:
-            return tensor.permute(
-                0, 2, 1, 3
-            )  # (batch, head, seq_length, head_features)
+            return tensor.permute(0, 2, 1, 3)  # (batch, head, seq_length, head_features)
         else:
-            raise ValueError(
-                f"Input tensor rank should be one of [4, 5], but is: {len(tensor.shape)}"
-            )
+            raise ValueError(f"Input tensor rank should be one of [4, 5], but is: {len(tensor.shape)}")
 
     def _merge_heads(self, tensor, num_heads, attn_head_size):
         """
@@ -217,9 +200,7 @@ class GPTNeoAttentionMixin:
         elif len(tensor.shape) == 4:
             tensor = tensor.permute(0, 2, 1, 3).contiguous()
         else:
-            raise ValueError(
-                f"Input tensor rank should be one of [4, 5], but is: {len(tensor.shape)}"
-            )
+            raise ValueError(f"Input tensor rank should be one of [4, 5], but is: {len(tensor.shape)}")
         new_shape = tensor.size()[:-2] + (num_heads * attn_head_size,)
         return tensor.view(new_shape)
 
@@ -240,9 +221,7 @@ class GPTNeoAttentionMixin:
         key = key.to(torch.float32)
 
         attn_weights = torch.matmul(query, key.transpose(-1, -2))
-        attn_weights = torch.where(
-            causal_mask, attn_weights, masked_bias.to(attn_weights.dtype)
-        )
+        attn_weights = torch.where(causal_mask, attn_weights, masked_bias.to(attn_weights.dtype))
 
         if scale_attn is not None:
             attn_weights = attn_weights / scale_attn
@@ -367,9 +346,7 @@ class GPTNeoSelfAttention(nn.Module, GPTNeoAttentionMixin):
             present = None
 
         query_length, key_length = query.size(-2), key.size(-2)
-        causal_mask = self.bias[
-            :, :, key_length - query_length : key_length, :key_length
-        ]
+        causal_mask = self.bias[:, :, key_length - query_length : key_length, :key_length]
 
         attn_output, attn_weights = self._attn(
             query,
@@ -431,9 +408,7 @@ class GPTNeoAttention(nn.Module):
 
 
 class GPTNeoMLP(nn.Module):
-    def __init__(
-        self, intermediate_size, config
-    ):  # in MLP: intermediate_size= 4 * hidden_size
+    def __init__(self, intermediate_size, config):  # in MLP: intermediate_size= 4 * hidden_size
         super().__init__()
         embed_dim = config.hidden_size
         self.c_fc = nn.Linear(embed_dim, intermediate_size)
@@ -453,11 +428,7 @@ class GPTNeoBlock(nn.Module):
     def __init__(self, config, layer_id):
         super().__init__()
         hidden_size = config.hidden_size
-        inner_dim = (
-            config.intermediate_size
-            if config.intermediate_size is not None
-            else 4 * hidden_size
-        )
+        inner_dim = config.intermediate_size if config.intermediate_size is not None else 4 * hidden_size
         self.ln_1 = nn.LayerNorm(hidden_size, eps=config.layer_norm_epsilon)
         self.attn = GPTNeoAttention(config, layer_id)
         self.jax = config.jax
@@ -645,7 +616,7 @@ class GPTNeoModel(GPTNeoPreTrainedModel):
                 GPTNeoBlock(config, layer_id=i).to(f"cuda:{k}")
                 for i in range(self.n_layer_per_gpu * k, self.n_layer_per_gpu * (k + 1))
             ]
-            print(f"putting tensors to gpu {k}")
+            print(f"Loading to gpu {k}")
         self.h = nn.ModuleList(self._h)
         self.ln_f = nn.LayerNorm(self.embed_dim, eps=config.layer_norm_epsilon)
         self.rotary = None
@@ -684,25 +655,15 @@ class GPTNeoModel(GPTNeoPreTrainedModel):
         output_hidden_states=None,
         return_dict=None,
     ):
-        output_attentions = (
-            output_attentions
-            if output_attentions is not None
-            else self.config.output_attentions
-        )
+        output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
-            output_hidden_states
-            if output_hidden_states is not None
-            else self.config.output_hidden_states
+            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
-        return_dict = (
-            return_dict if return_dict is not None else self.config.use_return_dict
-        )
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if input_ids is not None and inputs_embeds is not None:
-            raise ValueError(
-                "You cannot specify both input_ids and inputs_embeds at the same time"
-            )
+            raise ValueError("You cannot specify both input_ids and inputs_embeds at the same time")
         elif input_ids is not None:
             input_shape = input_ids.size()
             input_ids = input_ids.view(-1, input_shape[-1])
@@ -728,12 +689,7 @@ class GPTNeoModel(GPTNeoPreTrainedModel):
 
         device = input_ids.device if input_ids is not None else inputs_embeds.device
         if position_ids is None:
-            position_ids = torch.arange(
-                past_length,
-                input_shape[-1] + past_length,
-                dtype=torch.long,
-                device=device,
-            )
+            position_ids = torch.arange(past_length, input_shape[-1] + past_length, dtype=torch.long, device=device,)
             position_ids = position_ids.unsqueeze(0).view(-1, input_shape[-1])
 
         # Attention mask.
@@ -752,9 +708,7 @@ class GPTNeoModel(GPTNeoPreTrainedModel):
             # positions we want to attend and -10000.0 for masked positions.
             # Since we are adding it to the raw scores before the softmax, this is
             # effectively the same as removing these entirely.
-            global_attention_mask = global_attention_mask.to(
-                dtype=self.dtype
-            )  # fp16 compatibility
+            global_attention_mask = global_attention_mask.to(dtype=self.dtype)  # fp16 compatibility
             global_attention_mask = (1.0 - global_attention_mask) * -10000.0
         else:
             global_attention_mask = None
@@ -795,12 +749,13 @@ class GPTNeoModel(GPTNeoPreTrainedModel):
             attn_mask = global_attention_mask
 
             if output_hidden_states:
-                all_hidden_states = all_hidden_states + (
-                    hidden_states.to(f"cuda:{current_gpu}"),
-                )
+                all_hidden_states = all_hidden_states + (hidden_states.to(f"cuda:{current_gpu}"),)
 
             if layer_past is not None:
-                layer_past = layer_past.to(f"cuda:{current_gpu}")
+                if type(layer_past) == list:
+                    layer_past = [x.to(f"cuda:{current_gpu}") for x in layer_past]
+                else:
+                    layer_past = layer_past.to(f"cuda:{current_gpu}")
 
             if head_mask[i] is not None:
                 our_head_mask = head_mask[i].to(f"cuda:{current_gpu}")
@@ -823,11 +778,7 @@ class GPTNeoModel(GPTNeoPreTrainedModel):
                     return custom_forward
 
                 outputs = torch.utils.checkpoint.checkpoint(
-                    create_custom_forward(block),
-                    hidden_states,
-                    None,
-                    attn_mask,
-                    head_mask[i],
+                    create_custom_forward(block), hidden_states, None, attn_mask, head_mask[i],
                 )
             else:
                 outputs = block(
@@ -844,9 +795,7 @@ class GPTNeoModel(GPTNeoPreTrainedModel):
                 presents = presents + ([x.to(f"cuda:0") for x in outputs[1]],)
 
             if output_attentions:
-                all_self_attentions = all_self_attentions + (
-                    outputs[2 if use_cache else 1],
-                )
+                all_self_attentions = all_self_attentions + (outputs[2 if use_cache else 1],)
 
             if output_attentions:
                 outs = [x.to(f"cuda:0") for x in outputs[2 if use_cache else 1]]
@@ -861,14 +810,7 @@ class GPTNeoModel(GPTNeoPreTrainedModel):
 
         if not return_dict:
             return tuple(
-                v
-                for v in [
-                    hidden_states,
-                    presents,
-                    all_hidden_states,
-                    all_self_attentions,
-                ]
-                if v is not None
+                v for v in [hidden_states, presents, all_hidden_states, all_self_attentions,] if v is not None
             )
 
         return BaseModelOutputWithPast(
@@ -968,9 +910,7 @@ class GPTNeoForCausalLM(GPTNeoPreTrainedModel):
             ``labels = input_ids`` Indices are selected in ``[-100, 0, ..., config.vocab_size]`` All labels set to
             ``-100`` are ignored (masked), the loss is only computed for labels in ``[0, ..., config.vocab_size]``
         """
-        return_dict = (
-            return_dict if return_dict is not None else self.config.use_return_dict
-        )
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         transformer_outputs = self.transformer(
             input_ids,
@@ -1000,9 +940,7 @@ class GPTNeoForCausalLM(GPTNeoPreTrainedModel):
             shift_labels = labels[..., 1:].contiguous()
             # Flatten the tokens
             loss_fct = CrossEntropyLoss()
-            loss = loss_fct(
-                shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1)
-            )
+            loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
 
             lm_logits = lm_logits.to(hidden_states.dtype)
             loss = loss.to(hidden_states.dtype)
@@ -1020,19 +958,14 @@ class GPTNeoForCausalLM(GPTNeoPreTrainedModel):
         )
 
     @staticmethod
-    def _reorder_cache(
-        past: Tuple[Tuple[torch.Tensor]], beam_idx: torch.Tensor
-    ) -> Tuple[Tuple[torch.Tensor]]:
+    def _reorder_cache(past: Tuple[Tuple[torch.Tensor]], beam_idx: torch.Tensor) -> Tuple[Tuple[torch.Tensor]]:
         """
         This function is used to re-order the :obj:`past_key_values` cache if
         :meth:`~transformers.PretrainedModel.beam_search` or :meth:`~transformers.PretrainedModel.beam_sample` is
         called. This is required to match :obj:`past_key_values` with the correct beam_idx at every generation step.
         """
         return tuple(
-            tuple(
-                past_state.index_select(0, beam_idx.to(past_state.device))
-                for past_state in layer_past
-            )
+            tuple(past_state.index_select(0, beam_idx.to(past_state.device)) for past_state in layer_past)
             for layer_past in past
         )
 
@@ -1091,9 +1024,7 @@ class GPTNeoForSequenceClassification(GPTNeoPreTrainedModel):
             config.num_labels - 1]`. If :obj:`config.num_labels == 1` a regression loss is computed (Mean-Square loss),
             If :obj:`config.num_labels > 1` a classification loss is computed (Cross-Entropy).
         """
-        return_dict = (
-            return_dict if return_dict is not None else self.config.use_return_dict
-        )
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         transformer_outputs = self.transformer(
             input_ids,
@@ -1123,9 +1054,7 @@ class GPTNeoForSequenceClassification(GPTNeoPreTrainedModel):
             sequence_lengths = -1
         else:
             if input_ids is not None:
-                sequence_lengths = (
-                    torch.ne(input_ids, self.config.pad_token_id).sum(-1) - 1
-                )
+                sequence_lengths = torch.ne(input_ids, self.config.pad_token_id).sum(-1) - 1
             else:
                 sequence_lengths = -1
                 logger.warning(
@@ -1143,9 +1072,7 @@ class GPTNeoForSequenceClassification(GPTNeoPreTrainedModel):
                 loss = loss_fct(pooled_logits.view(-1), labels.to(self.dtype).view(-1))
             else:
                 loss_fct = CrossEntropyLoss()
-                loss = loss_fct(
-                    pooled_logits.view(-1, self.num_labels), labels.view(-1)
-                )
+                loss = loss_fct(pooled_logits.view(-1, self.num_labels), labels.view(-1))
 
         if not return_dict:
             output = (pooled_logits,) + transformer_outputs[1:]
