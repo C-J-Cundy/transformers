@@ -785,12 +785,12 @@ class GPTNeoModel(GPTNeoPreTrainedModel):
                     hidden_states.to(f"cuda:{current_gpu}"),
                     layer_past=layer_past,
                     attention_mask=attn_mask.to(f"cuda:{current_gpu}"),
-                    head_mask=head_mask[i],
+                    head_mask=our_head_mask,
                     use_cache=use_cache,
                     output_attentions=output_attentions,
                 )
 
-            hidden_states = outputs[0].to(f"cuda:{current_gpu}")
+            hidden_states = outputs[0].to("cuda:0")
             if use_cache is True:
                 presents = presents + ([x.to(f"cuda:0") for x in outputs[1]],)
 
